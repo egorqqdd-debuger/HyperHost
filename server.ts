@@ -7,9 +7,25 @@ import multer from "multer";
 import cors from "cors";
 import axios from "axios";
 import { spawn } from "child_process";
+import { createClient } from "@supabase/supabase-js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Initialize Supabase (Lazy load to avoid crash if keys missing)
+let supabaseClient: any = null;
+function getSupabase() {
+  if (!supabaseClient) {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+    if (!url || !key) {
+      console.warn("Supabase credentials missing. Persistent storage will not work.");
+      return null;
+    }
+    supabaseClient = createClient(url, key);
+  }
+  return supabaseClient;
+}
 
 export async function createServer() {
   const app = express();
@@ -29,32 +45,52 @@ export async function createServer() {
   const storage = multer.memoryStorage();
   const upload = multer({ storage });
 
-  // --- Mock DB (In-memory for demo, should be Firestore/Postgres) ---
+  // --- Mock DB Fallback ---
+  let mockUsers: any[] = [];
   const initialAdminEmail = process.env.ADMIN_EMAIL || "admin@hyperhost.io";
   const initialAdminPassword = process.env.ADMIN_PASSWORD;
-
-  let users: any[] = [];
   
   if (initialAdminPassword) {
-    users.push({ 
+    mockUsers.push({ 
       id: "1", 
       email: initialAdminEmail, 
       role: "SUPERADMIN", 
       password: initialAdminPassword 
     });
-    console.log(`Initial admin user created: ${initialAdminEmail}`);
-  } else {
-    console.warn("ADMIN_PASSWORD not set. Initial admin user will not be created automatically.");
   }
-  let userBots: any[] = [];
-  let files: any[] = [];
 
   // --- API Routes ---
 
   // Auth
-  app.post("/api/auth/login", (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;
-    const user = users.find(u => u.email === email && u.password === password);
+    const supabase = getSupabase();
+
+    if (supabase) {
+      // Try Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (!authError && authData.user) {
+        // Fetch user metadata from our profile table
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", authData.user.id)
+          .single();
+
+        return res.json({ 
+          id: authData.user.id, 
+          email: authData.user.email, 
+          role: profile?.role || "USER" 
+        });
+      }
+    }
+
+    // Fallback to mock users
+    const user = mockUsers.find(u => u.email === email && u.password === password);
     if (user) {
       res.json({ id: user.id, email: user.email, role: user.role });
     } else {
@@ -63,101 +99,215 @@ export async function createServer() {
   });
 
   // Bots
-  app.get("/api/bots", (req, res) => {
+  app.get("/api/bots", async (req, res) => {
     const userId = req.query.userId as string;
-    const user = users.find(u => u.id === userId);
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
-    
-    if (user.role === "SUPERADMIN" || user.role === "ADMIN") {
-      return res.json(userBots);
+    const supabase = getSupabase();
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("bots")
+        .select("*")
+        .or(`owner_id.eq.${userId},owner_id.is.null`);
+      
+      if (!error && data) {
+        return res.json(data.map((b: any) => ({
+          id: b.id,
+          name: b.name,
+          token: b.token,
+          ownerId: b.owner_id,
+          scriptPath: b.script_path,
+          variables: b.variables,
+          status: b.status,
+          webhookUrl: b.webhook_url,
+          createdAt: b.created_at
+        })));
+      }
     }
-    res.json(userBots.filter(b => b.ownerId === userId));
+    
+    res.json([]);
   });
 
   app.post("/api/bots", async (req, res) => {
     const { ownerId, name, token, scriptPath, variables } = req.body;
+    const supabase = getSupabase();
     
     try {
       const response = await axios.get(`https://api.telegram.org/bot${token}/getMe`);
       if (!response.data.ok) throw new Error("Invalid token");
       
+      const webhookUrl = `${process.env.APP_URL || "http://localhost:3000"}/api/webhooks/bot/${token}`;
+
       const newBot = {
-        id: Math.random().toString(36).substr(2, 9),
-        ownerId,
         name,
         token,
-        scriptPath,
+        owner_id: ownerId,
+        script_path: scriptPath,
         variables: variables || {},
         status: "STOPPED",
-        webhookUrl: `${process.env.APP_URL || "http://localhost:3000"}/api/webhooks/bot/${token}`,
-        createdAt: new Date().toISOString()
+        webhook_url: webhookUrl,
+        created_at: new Date().toISOString()
       };
 
       await axios.post(`https://api.telegram.org/bot${token}/setWebhook`, {
-        url: newBot.webhookUrl
+        url: webhookUrl
       });
 
-      userBots.push(newBot);
-      res.json(newBot);
+      if (supabase) {
+        const { data, error } = await supabase.from("bots").insert(newBot).select().single();
+        if (error) throw error;
+        return res.json({
+          id: data.id,
+          name: data.name,
+          token: data.token,
+          ownerId: data.owner_id,
+          scriptPath: data.script_path,
+          variables: data.variables,
+          status: data.status,
+          webhookUrl: data.webhook_url,
+          createdAt: data.created_at
+        });
+      }
+
+      res.status(500).json({ error: "Supabase not configured" });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
   });
 
-  app.post("/api/bots/:id/start", (req, res) => {
-    const bot = userBots.find(b => b.id === req.params.id);
-    if (bot) {
-      bot.status = "RUNNING";
-      res.json(bot);
-    } else {
-      res.status(404).json({ error: "Bot not found" });
+  app.post("/api/bots/:id/start", async (req, res) => {
+    const botId = req.params.id;
+    const supabase = getSupabase();
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("bots")
+        .update({ status: "RUNNING" })
+        .eq("id", botId)
+        .select()
+        .single();
+      
+      if (!error && data) return res.json({
+        id: data.id,
+        status: data.status
+      });
     }
+    res.status(404).json({ error: "Bot not found or DB error" });
   });
 
-  app.post("/api/bots/:id/stop", (req, res) => {
-    const bot = userBots.find(b => b.id === req.params.id);
-    if (bot) {
-      bot.status = "STOPPED";
-      res.json(bot);
-    } else {
-      res.status(404).json({ error: "Bot not found" });
+  app.post("/api/bots/:id/stop", async (req, res) => {
+    const botId = req.params.id;
+    const supabase = getSupabase();
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("bots")
+        .update({ status: "STOPPED" })
+        .eq("id", botId)
+        .select()
+        .single();
+      
+      if (!error && data) return res.json({
+        id: data.id,
+        status: data.status
+      });
     }
+    res.status(404).json({ error: "Bot not found or DB error" });
   });
 
   // Files
-  app.post("/api/files/upload", upload.array("files"), (req, res) => {
+  app.post("/api/files/upload", upload.array("files"), async (req, res) => {
     const userId = req.body.userId;
-    const uploadedFiles = (req.files as Express.Multer.File[]).map(f => ({
-      id: Math.random().toString(36).substr(2, 9),
-      ownerId: userId,
-      name: f.originalname,
-      size: `${(f.size / 1024).toFixed(1)} KB`,
-      type: f.mimetype,
-      createdAt: new Date().toISOString()
-    }));
-    files.push(...uploadedFiles);
-    res.json(uploadedFiles);
+    const supabase = getSupabase();
+    const filesArr = req.files as Express.Multer.File[];
+    
+    if (!supabase) return res.status(500).json({ error: "Supabase not configured" });
+
+    const results = [];
+    for (const f of filesArr) {
+      const fileName = `${userId}/${Date.now()}-${f.originalname}`;
+      
+      // Upload to Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("bot-files")
+        .upload(fileName, f.buffer, {
+          contentType: f.mimetype,
+          upsert: true
+        });
+
+      if (uploadError) continue;
+
+      // Insert into metadata table
+      const { data: dbData, error: dbError } = await supabase
+        .from("files")
+        .insert({
+          owner_id: userId,
+          name: f.originalname,
+          storage_path: uploadData.path,
+          size: f.size,
+          type: f.mimetype,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (!dbError && dbData) {
+        results.push({
+          id: dbData.id,
+          name: dbData.name,
+          type: dbData.type,
+          size: dbData.size,
+          createdAt: dbData.created_at,
+          path: dbData.storage_path
+        });
+      }
+    }
+
+    res.json(results);
   });
 
-  app.get("/api/files", (req, res) => {
+  app.get("/api/files", async (req, res) => {
     const userId = req.query.userId as string;
-    res.json(files.filter(f => f.ownerId === userId));
+    const supabase = getSupabase();
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("files")
+        .select("*")
+        .eq("owner_id", userId);
+      
+      if (!error && data) {
+        return res.json(data.map((f: any) => ({
+          id: f.id,
+          name: f.name,
+          type: f.type,
+          size: f.size,
+          createdAt: f.created_at,
+          path: f.storage_path
+        })));
+      }
+    }
+    res.json([]);
   });
 
   // Webhook Handler
   app.post("/api/webhooks/bot/:token", async (req, res) => {
     const token = req.params.token;
-    const bot = userBots.find(b => b.token === token);
+    const supabase = getSupabase();
     
+    let bot = null;
+    if (supabase) {
+      const { data } = await supabase.from("bots").select("*").eq("token", token).single();
+      bot = data;
+    }
+
     if (!bot || bot.status !== "RUNNING") {
       return res.status(200).send("Bot not active");
     }
 
-    if (bot.scriptPath && fs.existsSync(bot.scriptPath)) {
-      const pythonProcess = spawn('python3', [bot.scriptPath]);
-      pythonProcess.stdin.write(JSON.stringify({ update: req.body, token: bot.token }));
-      pythonProcess.stdin.end();
-    }
+    // In a real serverless env, we wouldn't use spawn for long running tasks
+    // But for a webhook, we could trigger an Edge Function or another process
+    console.log(`Webhook received for bot: ${bot.name}`);
+    
     res.status(200).json({ ok: true });
   });
 

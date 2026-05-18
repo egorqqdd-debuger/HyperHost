@@ -62,6 +62,47 @@ export async function createServer() {
   // --- API Routes ---
 
   // Auth
+  app.post("/api/auth/register", async (req, res) => {
+    const { email, password } = req.body;
+    const supabase = getSupabase();
+
+    if (!supabase) return res.status(500).json({ error: "Supabase not configured" });
+
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (authError) throw authError;
+
+      if (authData.user) {
+        // Create initial profile
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .insert({
+            id: authData.user.id,
+            email: email,
+            role: "USER"
+          });
+
+        if (profileError) console.error("Profile creation error:", profileError);
+
+        return res.json({
+          user: {
+            id: authData.user.id,
+            email: authData.user.email,
+            role: "USER"
+          }
+        });
+      }
+
+      res.status(400).json({ error: "Registration failed" });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;
     const supabase = getSupabase();

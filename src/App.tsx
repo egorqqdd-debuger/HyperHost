@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { AuthProvider, useAuth } from "@/src/context/AuthContext";
 import LandingPage from "@/src/pages/LandingPage";
 import LoginPage from "@/src/pages/LoginPage";
+import RegisterPage from "@/src/pages/RegisterPage";
 import DashboardLayout from "@/src/components/DashboardLayout";
 import BotList from "@/src/pages/BotList";
 import BotDetails from "@/src/pages/BotDetails";
@@ -25,6 +26,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
             
             <Route path="/dashboard" element={
               <ProtectedRoute>

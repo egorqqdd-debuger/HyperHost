@@ -1,0 +1,6 @@
+{
+  "name": "HyperHost",
+  "description": "Enterprise-grade Telegram bot hosting platform with built-in file manager, multi-role dashboard, and Python runtime support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,64 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Extended user information and roles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["USER", "ADMIN", "SUPERADMIN"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Bot": {
+      "title": "Telegram Bot",
+      "description": "Metadata for a hosted Telegram bot.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "token": { "type": "string" },
+        "scriptPath": { "type": "string" },
+        "variables": { "type": "object" },
+        "status": { "type": "string", "enum": ["RUNNING", "STOPPED", "ERROR"] },
+        "webhookUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "name", "token", "scriptPath"]
+    },
+    "File": {
+      "title": "File Metadata",
+      "description": "Metadata for uploaded files in the file manager.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "path": { "type": "string" },
+        "size": { "type": "integer" },
+        "type": { "type": "string" },
+        "isFolder": { "type": "boolean" },
+        "parentId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "name", "path"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and roles."
+    },
+    "/bots/{botId}": {
+      "schema": "Bot",
+      "description": "Bot configurations."
+    },
+    "/files/{fileId}": {
+      "schema": "File",
+      "description": "File metadata for the manager."
+    }
+  }
+}

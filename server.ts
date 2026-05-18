@@ -11,10 +11,9 @@ import { spawn } from "child_process";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function startServer() {
+export async function createServer() {
   const app = express();
-  const PORT = 3000;
-
+  
   // Middleware
   app.use(cors());
   app.use(express.json());
@@ -26,14 +25,8 @@ async function startServer() {
   await fs.ensureDir(uploadsDir);
   await fs.ensureDir(botsDir);
 
-  const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, uploadsDir);
-    },
-    filename: (req, file, cb) => {
-      cb(null, `${Date.now()}-${file.originalname}`);
-    },
-  });
+  // --- File Upload Setup (Memory storage for Serverless compatibility) ---
+  const storage = multer.memoryStorage();
   const upload = multer({ storage });
 
   // --- Mock DB (In-memory for demo, should be Firestore/Postgres) ---
@@ -138,8 +131,7 @@ async function startServer() {
       id: Math.random().toString(36).substr(2, 9),
       ownerId: userId,
       name: f.originalname,
-      path: f.path,
-      size: f.size,
+      size: `${(f.size / 1024).toFixed(1)} KB`,
       type: f.mimetype,
       createdAt: new Date().toISOString()
     }));
@@ -176,7 +168,7 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (!process.env.VERCEL) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
@@ -184,9 +176,14 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  return app;
 }
 
-startServer();
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  createServer().then(app => {
+    const PORT = 3000;
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  });
+}

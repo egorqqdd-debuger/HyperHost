@@ -39,9 +39,9 @@ interface User {
 export default function AdminUsers() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([
-    { id: "1", email: "admin@botstation.pro", role: "SUPERADMIN", createdAt: new Date().toISOString() },
+    { id: "1", email: "admin@hyperhost.io", role: "SUPERADMIN", createdAt: new Date().toISOString() },
     { id: "2", email: "demo.user@example.com", role: "USER", createdAt: new Date().toISOString() },
-    { id: "3", email: "support@bothost.pro", role: "ADMIN", createdAt: new Date().toISOString() },
+    { id: "3", email: "support@hyperhost.io", role: "ADMIN", createdAt: new Date().toISOString() },
   ]);
 
   const getRoleBadge = (role: string) => {

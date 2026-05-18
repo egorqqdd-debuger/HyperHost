@@ -299,7 +299,7 @@ export default function BotDetails() {
                   <div>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter mb-1">Webhook URL</p>
                     <div className="bg-slate-950 p-2 rounded-lg border border-slate-800 font-mono text-[10px] text-indigo-400 break-all">
-                      https://api.botstation.pro/hooks/{bot.id}
+                      https://api.hyperhost.io/hooks/{bot.id}
                     </div>
                   </div>
                   <div>

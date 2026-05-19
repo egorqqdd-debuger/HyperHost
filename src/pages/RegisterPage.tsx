@@ -31,14 +31,18 @@ export default function RegisterPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        // Automatically login after registration using the login function
-        await login(email, password);
-        navigate("/bots");
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        if (response.ok) {
+          await login(email, password);
+          navigate("/bots");
+        } else {
+          setError(data.error || "Registration failed");
+        }
       } else {
-        setError(data.error || "Registration failed");
+        const text = await response.text();
+        setError(`Server error (${response.status}): ${text.substring(0, 100)}...`);
       }
     } catch (err: any) {
       setError(`Connection error: ${err.message || "Unknown error"}`);

@@ -22,11 +22,21 @@ function getSupabase() {
                 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
                 process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
                 
+    console.log("Supabase URL present:", !!url);
+    console.log("Supabase Key present:", !!key);
+
     if (!url || !key) {
       console.warn("Supabase credentials missing. Persistent storage will not work.");
       return null;
     }
-    supabaseClient = createClient(url, key);
+    
+    try {
+      supabaseClient = createClient(url, key);
+      console.log("Supabase client initialized successfully");
+    } catch (err) {
+      console.error("Critical error initializing Supabase client:", err);
+      return null;
+    }
   }
   return supabaseClient;
 }

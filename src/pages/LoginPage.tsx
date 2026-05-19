@@ -97,6 +97,7 @@ export default function LoginPage() {
           <div className="text-slate-500 text-sm">
             Нет профиля? <Link to="/register" className="text-indigo-400 hover:text-indigo-300 font-bold hover:underline">Создать идентификатор</Link>
           </div>
+          <Link to="/status" className="text-xs text-slate-600 hover:text-slate-400 transition-colors uppercase tracking-widest font-bold">System Status</Link>
         </CardFooter>
       </Card>
     </div>

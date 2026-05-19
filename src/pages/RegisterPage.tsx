@@ -42,7 +42,8 @@ export default function RegisterPage() {
         }
       } else {
         const text = await response.text();
-        setError(`Server error (${response.status}): ${text.substring(0, 100)}...`);
+        setError(`Server error (${response.status}). If this persists, please check the /status page for diagnostics.`);
+        console.error("Registration error details:", text);
       }
     } catch (err: any) {
       setError(`Connection error: ${err.message || "Unknown error"}`);
@@ -159,6 +160,9 @@ export default function RegisterPage() {
               Sign In
             </Link>
           </p>
+          <div className="mt-4 flex justify-center border-t border-slate-800/50 pt-4">
+            <Link to="/status" className="text-[10px] text-slate-600 hover:text-slate-500 transition-colors uppercase tracking-[0.2em] font-black">Environment Diagnostics</Link>
+          </div>
         </div>
       </motion.div>
     </div>

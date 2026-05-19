@@ -22,6 +22,14 @@ process.on("uncaughtException", (err) => {
 
 dotenv.config();
 
+console.log("Server module loading...");
+console.log("Environment check:", {
+  NODE_ENV: process.env.NODE_ENV,
+  VERCEL: !!process.env.VERCEL,
+  HAS_SUPABASE_URL: !!(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+  HAS_SUPABASE_KEY: !!(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY),
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -64,11 +72,18 @@ export async function createServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // Storage setup
-  const uploadsDir = path.join(process.cwd(), "uploads");
-  const botsDir = path.join(process.cwd(), "bots_scripts");
-  await fs.ensureDir(uploadsDir);
-  await fs.ensureDir(botsDir);
+  // Storage setup - Use /tmp for serverless environments
+  const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+  const uploadsDir = isServerless ? "/tmp/uploads" : path.join(process.cwd(), "uploads");
+  const botsDir = isServerless ? "/tmp/bots_scripts" : path.join(process.cwd(), "bots_scripts");
+  
+  try {
+    await fs.ensureDir(uploadsDir);
+    await fs.ensureDir(botsDir);
+    console.log(`Storage ready at ${uploadsDir}`);
+  } catch (err) {
+    console.warn("Storage initialization warning:", err);
+  }
 
   // --- File Upload Setup (Memory storage for Serverless compatibility) ---
   const storage = multer.memoryStorage();
@@ -473,13 +488,15 @@ export async function createServer() {
   return app;
 }
 
-// Always start the server on port 3000
-const PORT = 3000;
-createServer().then(app => {
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server successfully started and listening on http://0.0.0.0:${PORT}`);
+// Only start the server on port 3000 if not in a serverless environment
+const PORT = Number(process.env.PORT) || 3000;
+if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  createServer().then(app => {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server successfully started and listening on http://0.0.0.0:${PORT}`);
+    });
+  }).catch(err => {
+    console.error("CRITICAL: Failed to start server:", err);
+    process.exit(1);
   });
-}).catch(err => {
-  console.error("CRITICAL: Failed to start server:", err);
-  process.exit(1);
-});
+}

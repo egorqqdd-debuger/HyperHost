@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "@/src/context/AuthContext";
 import LandingPage from "@/src/pages/LandingPage";
 import LoginPage from "@/src/pages/LoginPage";
 import RegisterPage from "@/src/pages/RegisterPage";
+import StatusPage from "@/src/pages/StatusPage";
 import DashboardLayout from "@/src/components/DashboardLayout";
 import BotList from "@/src/pages/BotList";
 import BotDetails from "@/src/pages/BotDetails";
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/status" element={<StatusPage />} />
             
             <Route path="/dashboard" element={
               <ProtectedRoute>

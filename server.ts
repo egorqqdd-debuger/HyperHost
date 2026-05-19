@@ -90,9 +90,32 @@ export async function createServer() {
 
   // --- API Routes ---
 
-  // Health Check
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  // Health Check & Diagnostics
+  app.get("/api/health", async (req, res) => {
+    const supabase = getSupabase();
+    const diagnostics: any = {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      supabaseConfigured: !!supabase,
+      envCheck: {
+        hasUrl: !!process.env.SUPABASE_URL,
+        hasKey: !!(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY),
+      }
+    };
+
+    if (supabase) {
+      try {
+        // Try a very simple query to check DB connectivity
+        const { error } = await supabase.from("profiles").select("count", { count: "exact", head: true });
+        diagnostics.databaseConnection = error ? "error" : "connected";
+        if (error) diagnostics.databaseError = error.message;
+      } catch (e: any) {
+        diagnostics.databaseConnection = "exception";
+        diagnostics.databaseError = e.message;
+      }
+    }
+
+    res.json(diagnostics);
   });
 
   // Auth

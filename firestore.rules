@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // --- Global Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isAdmin() { return isSignedIn() && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role in ['ADMIN', 'SUPERADMIN']; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    // --- Validation Helpers ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'email', 'role']) &&
+             data.id == request.auth.uid &&
+             data.email is string && data.email.size() < 256 &&
+             data.role in ['USER', 'ADMIN', 'SUPERADMIN'];
+    }
+
+    function isValidBot(data) {
+      return data.keys().hasAll(['name', 'token', 'ownerId', 'status', 'createdAt']) &&
+             data.name is string && data.name.size() <= 100 &&
+             data.token is string && data.token.size() <= 200 &&
+             data.ownerId == request.auth.uid &&
+             data.status in ['RUNNING', 'STOPPED', 'ERROR'];
+    }
+
+    function isValidFile(data) {
+      return data.keys().hasAll(['name', 'path', 'ownerId', 'size', 'type', 'createdAt']) &&
+             data.name is string && data.name.size() <= 256 &&
+             data.path is string && data.path.size() <= 1024 &&
+             data.ownerId == request.auth.uid &&
+             data.size is int &&
+             data.type is string;
+    }
+
+    // --- Default Deny ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Profiles ---
+    match /profiles/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().role == 'USER';
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['email']) || isAdmin();
+    }
+
+    // --- Bots ---
+    match /bots/{botId} {
+      allow read: if isOwner(existing().ownerId) || isAdmin();
+      allow create: if isSignedIn() && isValidBot(incoming()) && isOwner(incoming().ownerId);
+      allow update: if (isOwner(existing().ownerId) || isAdmin()) && 
+                    isValidBot(incoming()) &&
+                    incoming().diff(existing()).affectedKeys().hasAny(['status', 'name', 'variables']);
+      allow delete: if isOwner(existing().ownerId) || isAdmin();
+    }
+
+    // --- Files ---
+    match /files/{fileId} {
+      allow read: if isOwner(existing().ownerId) || isAdmin();
+      allow create: if isSignedIn() && isValidFile(incoming()) && isOwner(incoming().ownerId);
+      allow update: if isOwner(existing().ownerId) && 
+                    isValidFile(incoming()) &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['name']);
+      allow delete: if isOwner(existing().ownerId) || isAdmin();
+    }
+  }
+}

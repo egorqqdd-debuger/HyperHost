@@ -1,4 +1,12 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { 
+  onAuthStateChanged, 
+  signInWithEmailAndPassword, 
+  signOut,
+  User as FirebaseUser 
+} from 'firebase/auth';
+import { auth, db } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface User {
   id: string;
@@ -20,32 +28,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          // Fetch additional profile data from Firestore
+          const profileDoc = await getDoc(doc(db, 'profiles', firebaseUser.uid));
+          const profileData = profileDoc.data();
+          
+          setUser({
+            id: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            role: (profileData?.role as any) || 'USER'
+          });
+        } catch (err) {
+          console.error("Profile fetch error:", err);
+          setUser({
+            id: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            role: 'USER'
+          });
+        }
+      } else {
+        setUser(null);
+      }
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      if (!response.ok) throw new Error('Invalid credentials');
-      const userData = await response.json();
-      setUser(userData);
-      localStorage.setItem('user', JSON.stringify(userData));
+      await signInWithEmailAndPassword(auth, email, password);
     } catch (err) {
+      console.error("Login error:", err);
       throw err;
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
+  const logout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
   };
 
   return (

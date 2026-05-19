@@ -40,8 +40,8 @@ export default function RegisterPage() {
       } else {
         setError(data.error || "Registration failed");
       }
-    } catch (err) {
-      setError("Connection error. Please try again.");
+    } catch (err: any) {
+      setError(`Connection error: ${err.message || "Unknown error"}`);
     } finally {
       setIsLoading(false);
     }

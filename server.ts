@@ -65,23 +65,38 @@ export async function createServer() {
 
   // --- API Routes ---
 
+  // Health Check
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
   // Auth
   app.post("/api/auth/register", async (req, res) => {
     const { email, password } = req.body;
+    console.log(`Registration attempt for: ${email}`);
     const supabase = getSupabase();
 
-    if (!supabase) return res.status(500).json({ error: "Supabase not configured" });
+    if (!supabase) {
+      console.error("Supabase client not initialized - missing env vars?");
+      return res.status(500).json({ error: "Supabase not configured" });
+    }
 
     try {
+      console.log("Calling supabase.auth.signUp...");
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        console.error("Supabase signUp error:", authError);
+        throw authError;
+      }
 
       if (authData.user) {
+        console.log(`User created in Supabase Auth: ${authData.user.id}`);
         // Create initial profile
+        console.log("Creating user profile in 'profiles' table...");
         const { error: profileError } = await supabase
           .from("profiles")
           .insert({
@@ -90,7 +105,11 @@ export async function createServer() {
             role: "USER"
           });
 
-        if (profileError) console.error("Profile creation error:", profileError);
+        if (profileError) {
+          console.error("Profile creation error (non-fatal for auth):", profileError);
+        } else {
+          console.log("Profile created successfully");
+        }
 
         return res.json({
           user: {
@@ -101,14 +120,17 @@ export async function createServer() {
         });
       }
 
+      console.error("Registration failed: no user data returned");
       res.status(400).json({ error: "Registration failed" });
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      console.error("Catch block in registration:", err);
+      res.status(400).json({ error: err.message || "Unknown error during registration" });
     }
   });
 
   app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;
+    console.log(`Login attempt for: ${email}`);
     const supabase = getSupabase();
 
     if (supabase) {

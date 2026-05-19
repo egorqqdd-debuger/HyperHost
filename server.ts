@@ -142,13 +142,32 @@ export async function createServer() {
 
     try {
       console.log("Attempting Supabase registration for:", email);
-      const { data: authData, error: authError } = await supabase.auth.signUp({ 
-        email, 
-        password 
-      });
+      
+      const supabase = getSupabase();
+      let authData, authError;
+
+      // If we have a service role key, we can use the admin API to skip email confirmation
+      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        console.log("Using Supabase Admin API for registration (bypassing email confirmation)");
+        const { data, error } = await supabase.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true
+        });
+        authData = data;
+        authError = error;
+      } else {
+        console.log("Using standard Supabase signUp");
+        const { data, error } = await supabase.auth.signUp({ 
+          email, 
+          password 
+        });
+        authData = data;
+        authError = error;
+      }
 
       if (authError) {
-        console.error("Supabase signUp error:", authError);
+        console.error("Supabase registration error:", authError);
         return res.status(400).json({ error: authError.message });
       }
 

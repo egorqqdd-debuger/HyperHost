@@ -88,28 +88,38 @@ export async function createServer() {
     });
   }
 
-  // --- API Routes ---
+// --- API Routes ---
 
   // Health Check & Diagnostics
   app.get("/api/health", async (req, res) => {
+    console.log("Health check requested");
     const supabase = getSupabase();
     const diagnostics: any = {
       status: "ok",
       timestamp: new Date().toISOString(),
       supabaseConfigured: !!supabase,
-      envCheck: {
-        hasUrl: !!process.env.SUPABASE_URL,
-        hasKey: !!(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY),
+      env: {
+        NODE_ENV: process.env.NODE_ENV,
+        PORT: process.env.PORT,
+        HAS_SUPABASE_URL: !!process.env.SUPABASE_URL,
+        HAS_SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
+        HAS_SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
       }
     };
 
     if (supabase) {
       try {
-        // Try a very simple query to check DB connectivity
+        console.log("Testing Supabase connection...");
         const { error } = await supabase.from("profiles").select("count", { count: "exact", head: true });
         diagnostics.databaseConnection = error ? "error" : "connected";
-        if (error) diagnostics.databaseError = error.message;
+        if (error) {
+          console.error("Supabase health test error:", error);
+          diagnostics.databaseError = error.message;
+        } else {
+          console.log("Supabase connection OK");
+        }
       } catch (e: any) {
+        console.error("Supabase health test exception:", e);
         diagnostics.databaseConnection = "exception";
         diagnostics.databaseError = e.message;
       }
@@ -422,30 +432,35 @@ export async function createServer() {
 
   // Vite Middleware
   if (process.env.NODE_ENV !== "production") {
+    console.log("Using Vite middleware (development)");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else if (!process.env.VERCEL) {
+  } else {
+    console.log("Serving static files (production)");
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+    if (await fs.pathExists(distPath)) {
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    } else {
+      console.warn("Dist folder not found, static serving might fail");
+    }
   }
 
   return app;
 }
 
-if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-  createServer().then(app => {
-    const PORT = 3000;
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }).catch(err => {
-    console.error("Failed to start server:", err);
-    process.exit(1);
+// Always start the server on port 3000
+const PORT = 3000;
+createServer().then(app => {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server successfully started and listening on http://0.0.0.0:${PORT}`);
   });
-}
+}).catch(err => {
+  console.error("CRITICAL: Failed to start server:", err);
+  process.exit(1);
+});

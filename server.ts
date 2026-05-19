@@ -11,6 +11,15 @@ import { createClient } from "@supabase/supabase-js";
 
 import dotenv from "dotenv";
 
+// Add global error handlers to help debug crashes
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception thrown:", err);
+});
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,7 +36,7 @@ function getSupabase() {
                 process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
     if (!url || !key) {
-      console.warn("Supabase credentials missing.");
+      console.warn("Supabase credentials missing. Available env vars:", Object.keys(process.env).filter(k => k.includes("SUPABASE")));
       return null;
     }
     
@@ -99,16 +108,14 @@ export async function createServer() {
     }
 
     try {
-      // Timeout promise
-      const timeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Supabase timeout")), 8000)
-      );
-
-      const signUpPromise = supabase.auth.signUp({ email, password });
-      
-      const { data: authData, error: authError } = (await Promise.race([signUpPromise, timeout])) as any;
+      console.log("Attempting Supabase registration for:", email);
+      const { data: authData, error: authError } = await supabase.auth.signUp({ 
+        email, 
+        password 
+      });
 
       if (authError) {
+        console.error("Supabase signUp error:", authError);
         return res.status(400).json({ error: authError.message });
       }
 
@@ -414,5 +421,8 @@ if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
+  }).catch(err => {
+    console.error("Failed to start server:", err);
+    process.exit(1);
   });
 }

@@ -9,6 +9,10 @@ import axios from "axios";
 import { spawn } from "child_process";
 import { createClient } from "@supabase/supabase-js";
 
+import dotenv from "dotenv";
+
+dotenv.config();
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -21,20 +25,22 @@ function getSupabase() {
                 process.env.SUPABASE_ANON_KEY || 
                 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
                 process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-                
-    console.log("Supabase URL present:", !!url);
-    console.log("Supabase Key present:", !!key);
 
     if (!url || !key) {
-      console.warn("Supabase credentials missing. Persistent storage will not work.");
+      console.warn("Supabase credentials missing.");
       return null;
     }
     
     try {
-      supabaseClient = createClient(url, key);
-      console.log("Supabase client initialized successfully");
+      supabaseClient = createClient(url, key, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      });
+      console.log("Supabase client initialized");
     } catch (err) {
-      console.error("Critical error initializing Supabase client:", err);
+      console.error("Supabase init error:", err);
       return null;
     }
   }
@@ -83,42 +89,39 @@ export async function createServer() {
   // Auth
   app.post("/api/auth/register", async (req, res) => {
     const { email, password } = req.body;
-    console.log(`Registration attempt for: ${email}`);
-    const supabase = getSupabase();
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
 
+    const supabase = getSupabase();
     if (!supabase) {
-      console.error("Supabase client not initialized - missing env vars?");
-      return res.status(500).json({ error: "Supabase not configured" });
+      return res.status(500).json({ error: "Supabase not configured locally" });
     }
 
     try {
-      console.log("Calling supabase.auth.signUp...");
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-      });
+      // Timeout promise
+      const timeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Supabase timeout")), 8000)
+      );
+
+      const signUpPromise = supabase.auth.signUp({ email, password });
+      
+      const { data: authData, error: authError } = (await Promise.race([signUpPromise, timeout])) as any;
 
       if (authError) {
-        console.error("Supabase signUp error:", authError);
-        throw authError;
+        return res.status(400).json({ error: authError.message });
       }
 
-      if (authData.user) {
-        console.log(`User created in Supabase Auth: ${authData.user.id}`);
-        // Create initial profile
-        console.log("Creating user profile in 'profiles' table...");
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .insert({
+      if (authData?.user) {
+        // Optional: create profile, but don't fail if it doesn't work
+        try {
+          await supabase.from("profiles").insert({
             id: authData.user.id,
             email: email,
             role: "USER"
           });
-
-        if (profileError) {
-          console.error("Profile creation error (non-fatal for auth):", profileError);
-        } else {
-          console.log("Profile created successfully");
+        } catch (e) {
+          console.error("Non-fatal profile creation error:", e);
         }
 
         return res.json({
@@ -130,11 +133,10 @@ export async function createServer() {
         });
       }
 
-      console.error("Registration failed: no user data returned");
-      res.status(400).json({ error: "Registration failed" });
+      res.status(400).json({ error: "Registration failed or confirmation required" });
     } catch (err: any) {
-      console.error("Catch block in registration:", err);
-      res.status(400).json({ error: err.message || "Unknown error during registration" });
+      console.error("Registration error:", err);
+      res.status(500).json({ error: err.message || "Internal server error" });
     }
   });
 

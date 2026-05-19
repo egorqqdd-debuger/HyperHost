@@ -16,8 +16,12 @@ const __dirname = path.dirname(__filename);
 let supabaseClient: any = null;
 function getSupabase() {
   if (!supabaseClient) {
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || 
+                process.env.SUPABASE_ANON_KEY || 
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+                process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+                
     if (!url || !key) {
       console.warn("Supabase credentials missing. Persistent storage will not work.");
       return null;

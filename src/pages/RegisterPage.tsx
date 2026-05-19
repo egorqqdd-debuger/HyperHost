@@ -34,8 +34,8 @@ export default function RegisterPage() {
       const data = await response.json();
 
       if (response.ok) {
-        // Automatically login after registration
-        login(data.user);
+        // Automatically login after registration using the login function
+        await login(email, password);
         navigate("/bots");
       } else {
         setError(data.error || "Registration failed");
